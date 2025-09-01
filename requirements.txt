@@ -1,0 +1,3 @@
+customtkinter==5.2.2
+pandas==2.3.2
+fit_tool==0.9.13
