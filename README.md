@@ -38,15 +38,18 @@ The application must be entirely GUI-based. No terminal usage will be required b
 - Python 3.13+ (comes with macOS)
 - pip (Python package manager)
 
-### Quick Setup
-1. Clone or download this repository
-2. Open Terminal and navigate to the project directory
-3. Run the setup script: `./run_app.sh`
+### 🖱️ **EASIEST METHOD - Double-Click to Run** (RECOMMENDED)
+1. **Download this project** to your Mac
+2. **Double-click** `Hevy to Garmin Merger.command` 
+3. **The app opens automatically** - no terminal needed!
 
-The setup script will automatically:
-- Create a Python virtual environment
-- Install all required dependencies (customtkinter, pandas, fit_tool)
-- Launch the application
+**That's it!** The application will:
+- Set up everything automatically (first time only)
+- Install required libraries (first time only)  
+- Launch the GUI application
+- Work just like any Mac app
+
+**💡 Tip**: You can also find a copy on your Desktop for easy access!
 
 ### Manual Setup (Alternative)
 If you prefer to set up manually:
@@ -67,7 +70,8 @@ python app.py
 
 ## Usage
 
-1. **Launch the Application**: Run `./run_app.sh` or `python app.py` (after setup)
+### 🖱️ **For Beginners (NO TERMINAL)**
+1. **Double-click** `Hevy to Garmin Merger.command` (in the project folder or on your Desktop)
 
 2. **Select Files**:
    - Click "Select Garmin File..." and choose your `.FIT` activity file
