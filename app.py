@@ -2013,6 +2013,16 @@ class HevyGarminMerger:
             self.update_status(f"Validation ERROR: Unexpected error - {str(e)}")
             return False
             
+    def show_success_indicator(self):
+        """Show success indicator in the main window"""
+        try:
+            if self.success_label:
+                self.success_label.grid(row=3, column=0, padx=20, pady=(0, 10), sticky="ew")
+                # Auto-hide after 5 seconds
+                self.root.after(5000, lambda: self.success_label.grid_forget())
+        except Exception:
+            pass
+    
     def run(self):
         """Start the application main loop"""
         self.update_status("Application started. Ready for file selection.")
