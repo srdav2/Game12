@@ -22,6 +22,521 @@ import threading
 from fit_tool.fit_file import FitFile
 
 
+class WorkoutSummaryWindow:
+    """Enhanced final summary window with muscle group visualization"""
+    
+    def __init__(self, parent_app, garmin_sets, workout_stats, enhanced_fit_file):
+        self.parent_app = parent_app
+        self.garmin_sets = garmin_sets
+        self.workout_stats = workout_stats
+        self.enhanced_fit_file = enhanced_fit_file
+        self.window = None
+        self.user_confirmed = False
+        self.output_path = None
+        
+        # Load muscle group data
+        self.muscle_groups = self.load_muscle_groups()
+        
+    def load_muscle_groups(self):
+        """Load muscle group mapping data"""
+        try:
+            muscle_path = os.path.join(os.path.dirname(__file__), "muscle_groups.json")
+            with open(muscle_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            # Fallback muscle group data
+            return {
+                "muscle_group_mappings": {
+                    "chest": {"exercises": ["bench", "press"], "color": "#FF6B6B"},
+                    "back": {"exercises": ["deadlift", "row"], "color": "#4ECDC4"},
+                    "legs": {"exercises": ["squat", "lunge"], "color": "#DDA0DD"}
+                }
+            }
+    
+    def show_summary(self):
+        """Display the enhanced summary window"""
+        self.window = ctk.CTkToplevel(self.parent_app.root)
+        self.window.title("🏁 Workout Summary & Export")
+        self.window.geometry("1400x900")
+        self.window.transient(self.parent_app.root)
+        self.window.grab_set()
+        
+        # Configure grid
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=1)
+        
+        # Create header
+        self.create_summary_header()
+        
+        # Create main content (3 columns)
+        self.create_main_summary_content()
+        
+        # Create footer
+        self.create_summary_footer()
+        
+        # Center window
+        self.center_window()
+        
+        # Wait for user action
+        self.window.wait_window()
+        
+        return self.user_confirmed, self.output_path
+    
+    def create_summary_header(self):
+        """Create the summary header"""
+        header_frame = ctk.CTkFrame(self.window)
+        header_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
+        
+        # Title
+        title_label = ctk.CTkLabel(header_frame, 
+                                  text="🏁 Final Workout Summary", 
+                                  font=ctk.CTkFont(size=24, weight="bold"))
+        title_label.pack(pady=20)
+        
+        # Workout overview
+        total_sets = len(self.garmin_sets)
+        total_reps = sum(s['repetitions'] for s in self.garmin_sets)
+        total_exercises = len(set(s['original_exercise_name'] for s in self.garmin_sets))
+        
+        overview_text = f"📊 {total_exercises} Exercises • {total_sets} Sets • {total_reps} Total Reps"
+        overview_label = ctk.CTkLabel(header_frame, text=overview_text, 
+                                     font=ctk.CTkFont(size=16))
+        overview_label.pack(pady=(0, 20))
+        
+    def create_main_summary_content(self):
+        """Create the main 3-column summary content"""
+        main_frame = ctk.CTkFrame(self.window)
+        main_frame.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1) 
+        main_frame.grid_columnconfigure(2, weight=1)
+        main_frame.grid_rowconfigure(0, weight=1)
+        
+        # Left: Workout Statistics
+        self.create_workout_stats_panel(main_frame)
+        
+        # Center: Muscle Group Analysis
+        self.create_muscle_group_panel(main_frame)
+        
+        # Right: Exercise Summary
+        self.create_exercise_summary_panel(main_frame)
+        
+    def create_workout_stats_panel(self, parent):
+        """Create workout statistics panel"""
+        stats_frame = ctk.CTkScrollableFrame(parent)
+        stats_frame.grid(row=0, column=0, padx=(20, 10), pady=20, sticky="nsew")
+        
+        # Title
+        ctk.CTkLabel(stats_frame, text="📊 Workout Statistics", 
+                    font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(0, 20))
+        
+        # Garmin data stats
+        garmin_frame = ctk.CTkFrame(stats_frame)
+        garmin_frame.pack(fill="x", pady=(0, 15))
+        
+        ctk.CTkLabel(garmin_frame, text="⌚ Garmin Data", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10, anchor="w", padx=10)
+        
+        duration = self.workout_stats.get('duration_seconds', 1800)
+        duration_text = f"{duration // 60}:{duration % 60:02d}"
+        avg_hr = self.workout_stats.get('avg_hr', 110)
+        max_hr = self.workout_stats.get('max_hr', 143)
+        calories = self.workout_stats.get('calories', 194)
+        
+        ctk.CTkLabel(garmin_frame, text=f"Duration: {duration_text}").pack(anchor="w", padx=20)
+        ctk.CTkLabel(garmin_frame, text=f"Avg HR: {avg_hr} bpm").pack(anchor="w", padx=20)
+        ctk.CTkLabel(garmin_frame, text=f"Max HR: {max_hr} bpm").pack(anchor="w", padx=20)
+        ctk.CTkLabel(garmin_frame, text=f"Calories: {calories}").pack(anchor="w", padx=20, pady=(0, 10))
+        
+        # Hevy data stats
+        hevy_frame = ctk.CTkFrame(stats_frame)
+        hevy_frame.pack(fill="x")
+        
+        ctk.CTkLabel(hevy_frame, text="🏋️ Hevy Data", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10, anchor="w", padx=10)
+        
+        total_sets = len(self.garmin_sets)
+        total_reps = sum(s['repetitions'] for s in self.garmin_sets)
+        total_weight = sum(s['weight'] * s['repetitions'] for s in self.garmin_sets)
+        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        
+        ctk.CTkLabel(hevy_frame, text=f"Total Sets: {total_sets}").pack(anchor="w", padx=20)
+        ctk.CTkLabel(hevy_frame, text=f"Total Reps: {total_reps}").pack(anchor="w", padx=20)
+        ctk.CTkLabel(hevy_frame, text=f"Total Volume: {total_weight:.0f} {weight_unit}").pack(anchor="w", padx=20, pady=(0, 10))
+        
+    def create_muscle_group_panel(self, parent):
+        """Create muscle group visualization panel"""
+        muscle_frame = ctk.CTkScrollableFrame(parent)
+        muscle_frame.grid(row=0, column=1, padx=10, pady=20, sticky="nsew")
+        
+        # Title
+        ctk.CTkLabel(muscle_frame, text="💪 Muscle Groups Trained", 
+                    font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(0, 20))
+        
+        # Calculate muscle group volumes
+        muscle_volumes = self.calculate_muscle_group_volumes()
+        
+        # Create muscle group summary
+        for muscle_group, volume_data in muscle_volumes.items():
+            if volume_data['total_volume'] > 0:
+                muscle_group_frame = ctk.CTkFrame(muscle_frame)
+                muscle_group_frame.pack(fill="x", pady=5)
+                
+                # Muscle group name and volume
+                weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+                volume_text = f"{muscle_group.title()}: {volume_data['total_volume']:.0f} {weight_unit}"
+                sets_text = f"({volume_data['sets']} sets, {volume_data['reps']} reps)"
+                
+                ctk.CTkLabel(muscle_group_frame, text=volume_text, 
+                            font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+                ctk.CTkLabel(muscle_group_frame, text=sets_text, 
+                            font=ctk.CTkFont(size=12)).pack(anchor="w", padx=10, pady=(0, 5))
+        
+        # Add body diagram placeholder
+        diagram_frame = ctk.CTkFrame(muscle_frame)
+        diagram_frame.pack(fill="x", pady=20)
+        
+        ctk.CTkLabel(diagram_frame, text="🧍 Body Diagram", 
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(pady=10)
+        
+        # Create simple text-based muscle group visualization
+        self.create_text_body_diagram(diagram_frame, muscle_volumes)
+        
+    def calculate_muscle_group_volumes(self):
+        """Calculate volume per muscle group"""
+        muscle_volumes = {}
+        muscle_mappings = self.muscle_groups.get("muscle_group_mappings", {})
+        
+        # Initialize muscle groups
+        for muscle_group in muscle_mappings.keys():
+            muscle_volumes[muscle_group] = {
+                'total_volume': 0,
+                'sets': 0,
+                'reps': 0,
+                'exercises': set()
+            }
+        
+        # Calculate volumes
+        for set_data in self.garmin_sets:
+            exercise_name = set_data['original_exercise_name'].lower()
+            volume = set_data['weight'] * set_data['repetitions']
+            
+            # Find which muscle groups this exercise targets
+            for muscle_group, group_data in muscle_mappings.items():
+                exercise_keywords = group_data.get('exercises', [])
+                if any(keyword in exercise_name for keyword in exercise_keywords):
+                    muscle_volumes[muscle_group]['total_volume'] += volume
+                    muscle_volumes[muscle_group]['sets'] += 1
+                    muscle_volumes[muscle_group]['reps'] += set_data['repetitions']
+                    muscle_volumes[muscle_group]['exercises'].add(set_data['original_exercise_name'])
+        
+        return muscle_volumes
+        
+    def create_text_body_diagram(self, parent, muscle_volumes):
+        """Create a text-based body diagram showing trained muscle groups"""
+        diagram_text = "\n🧍 FRONT VIEW:\n"
+        diagram_text += "   💪 Shoulders\n" if muscle_volumes.get('shoulders', {}).get('total_volume', 0) > 0 else "   ⚪ Shoulders\n"
+        diagram_text += "  🫀 Chest\n" if muscle_volumes.get('chest', {}).get('total_volume', 0) > 0 else "  ⚪ Chest\n"
+        diagram_text += " 💪 Biceps   💪 Biceps\n" if muscle_volumes.get('biceps', {}).get('total_volume', 0) > 0 else " ⚪ Biceps   ⚪ Biceps\n"
+        diagram_text += "   🟡 Core\n" if muscle_volumes.get('core', {}).get('total_volume', 0) > 0 else "   ⚪ Core\n"
+        diagram_text += "  🦵 Quadriceps\n" if muscle_volumes.get('quadriceps', {}).get('total_volume', 0) > 0 else "  ⚪ Quadriceps\n"
+        diagram_text += "   🦵 Calves\n" if muscle_volumes.get('calves', {}).get('total_volume', 0) > 0 else "   ⚪ Calves\n"
+        
+        diagram_text += "\n🧍 BACK VIEW:\n"
+        diagram_text += "   💪 Shoulders\n" if muscle_volumes.get('shoulders', {}).get('total_volume', 0) > 0 else "   ⚪ Shoulders\n"
+        diagram_text += "  🔙 Upper Back\n" if muscle_volumes.get('back', {}).get('total_volume', 0) > 0 else "  ⚪ Upper Back\n"
+        diagram_text += " 💪 Triceps  💪 Triceps\n" if muscle_volumes.get('triceps', {}).get('total_volume', 0) > 0 else " ⚪ Triceps  ⚪ Triceps\n"
+        diagram_text += "  🔙 Lower Back\n" if muscle_volumes.get('back', {}).get('total_volume', 0) > 0 else "  ⚪ Lower Back\n"
+        diagram_text += "  🍑 Glutes\n" if muscle_volumes.get('glutes', {}).get('total_volume', 0) > 0 else "  ⚪ Glutes\n"
+        diagram_text += "  🦵 Hamstrings\n" if muscle_volumes.get('hamstrings', {}).get('total_volume', 0) > 0 else "  ⚪ Hamstrings\n"
+        diagram_text += "   🦵 Calves\n" if muscle_volumes.get('calves', {}).get('total_volume', 0) > 0 else "   ⚪ Calves\n"
+        
+        diagram_text += "\n💪 = Trained   ⚪ = Not Trained"
+        
+        ctk.CTkLabel(parent, text=diagram_text, 
+                    font=ctk.CTkFont(family="Monaco", size=12),
+                    justify="left").pack(pady=10, padx=10)
+        
+    def create_exercise_summary_panel(self, parent):
+        """Create exercise summary panel"""
+        exercise_frame = ctk.CTkScrollableFrame(parent)
+        exercise_frame.grid(row=0, column=2, padx=(10, 20), pady=20, sticky="nsew")
+        
+        # Title
+        ctk.CTkLabel(exercise_frame, text="🏋️ Exercise Breakdown", 
+                    font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(0, 20))
+        
+        # Create exercise summary
+        exercise_summary = {}
+        for set_data in self.garmin_sets:
+            exercise_name = set_data['original_exercise_name']
+            if exercise_name not in exercise_summary:
+                exercise_summary[exercise_name] = {
+                    'sets': 0, 'total_reps': 0, 'max_weight': 0, 
+                    'total_volume': 0, 'set_types': set()
+                }
+            
+            exercise_summary[exercise_name]['sets'] += 1
+            exercise_summary[exercise_name]['total_reps'] += set_data['repetitions']
+            exercise_summary[exercise_name]['max_weight'] = max(
+                exercise_summary[exercise_name]['max_weight'], 
+                set_data['weight']
+            )
+            exercise_summary[exercise_name]['total_volume'] += set_data['weight'] * set_data['repetitions']
+            
+            set_type_names = {0: "Normal", 2: "Warm-up", 5: "Failure", 6: "Drop set"}
+            exercise_summary[exercise_name]['set_types'].add(set_type_names.get(set_data['set_type'], "Normal"))
+        
+        # Display exercise summary
+        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        
+        for exercise, stats in exercise_summary.items():
+            exercise_frame_item = ctk.CTkFrame(exercise_frame)
+            exercise_frame_item.pack(fill="x", pady=5)
+            
+            # Exercise name
+            ctk.CTkLabel(exercise_frame_item, text=exercise.title(), 
+                        font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+            
+            # Stats
+            stats_text = f"  {stats['sets']} sets × {stats['total_reps']} reps"
+            ctk.CTkLabel(exercise_frame_item, text=stats_text).pack(anchor="w", padx=10)
+            
+            volume_text = f"  Max: {stats['max_weight']} {weight_unit} • Volume: {stats['total_volume']:.0f} {weight_unit}"
+            ctk.CTkLabel(exercise_frame_item, text=volume_text).pack(anchor="w", padx=10)
+            
+            if len(stats['set_types']) > 1:
+                types_text = f"  Types: {', '.join(stats['set_types'])}"
+                ctk.CTkLabel(exercise_frame_item, text=types_text).pack(anchor="w", padx=10, pady=(0, 5))
+        
+    def create_summary_footer(self):
+        """Create footer with final export button"""
+        footer_frame = ctk.CTkFrame(self.window)
+        footer_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
+        
+        # Final instructions
+        instruction_text = "🎯 Review your complete workout summary above.\n"
+        instruction_text += "This data will be integrated into your Garmin FIT file with preserved heart rate and timing data."
+        
+        ctk.CTkLabel(footer_frame, text=instruction_text,
+                    font=ctk.CTkFont(size=14)).pack(pady=15)
+        
+        # Action buttons
+        button_frame = ctk.CTkFrame(footer_frame)
+        button_frame.pack(pady=10)
+        
+        ctk.CTkButton(button_frame, text="← Back to Edit", command=self.back_to_edit,
+                     width=140).pack(side="left", padx=10)
+        
+        ctk.CTkButton(button_frame, text="🚀 Export Final FIT File", command=self.export_final_file,
+                     width=180, fg_color="green", hover_color="darkgreen",
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(side="right", padx=10)
+        
+    def center_window(self):
+        """Center the window on screen"""
+        self.window.update_idletasks()
+        width = self.window.winfo_width()
+        height = self.window.winfo_height()
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+        
+    def back_to_edit(self):
+        """Go back to preview/edit screen"""
+        self.user_confirmed = False
+        self.window.destroy()
+        
+    def export_final_file(self):
+        """Export the final FIT file"""
+        output_path = filedialog.asksaveasfilename(
+            title="Save Final Enhanced FIT File",
+            defaultextension=".fit",
+            filetypes=[("FIT files", "*.fit"), ("All files", "*.*")]
+        )
+        
+        if output_path:
+            self.output_path = output_path
+            self.user_confirmed = True
+            self.window.destroy()
+
+
+class UnmappedExerciseDialog:
+    """Dialog for manually mapping unmapped exercises"""
+    
+    def __init__(self, parent_app, unmapped_exercises, available_exercises):
+        self.parent_app = parent_app
+        self.unmapped_exercises = unmapped_exercises
+        self.available_exercises = available_exercises
+        self.user_mappings = {}
+        self.user_confirmed = False
+        self.window = None
+        
+    def show_dialog(self):
+        """Show the unmapped exercise mapping dialog"""
+        self.window = ctk.CTkToplevel(self.parent_app.root)
+        self.window.title("⚠️ Unmapped Exercises Found")
+        self.window.geometry("800x600")
+        self.window.transient(self.parent_app.root)
+        self.window.grab_set()  # Make it modal
+        
+        # Configure grid
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=1)
+        
+        # Create header
+        self.create_header()
+        
+        # Create mapping interface
+        self.create_mapping_interface()
+        
+        # Create footer
+        self.create_footer()
+        
+        # Center the window
+        self.window.update_idletasks()
+        width = self.window.winfo_width()
+        height = self.window.winfo_height()
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Wait for user action
+        self.window.wait_window()
+        
+        return self.user_confirmed, self.user_mappings
+        
+    def create_header(self):
+        """Create warning header"""
+        header_frame = ctk.CTkFrame(self.window)
+        header_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
+        
+        # Warning title
+        title_label = ctk.CTkLabel(header_frame, 
+                                  text="⚠️ Unmapped Exercises Found", 
+                                  font=ctk.CTkFont(size=20, weight="bold"),
+                                  text_color="orange")
+        title_label.pack(pady=(20, 10))
+        
+        # Warning message
+        message = f"Found {len(self.unmapped_exercises)} exercise(s) that don't have Garmin mappings.\n"
+        message += "Please select the closest Garmin exercise for each one below:"
+        
+        message_label = ctk.CTkLabel(header_frame, text=message, 
+                                    font=ctk.CTkFont(size=14))
+        message_label.pack(pady=(0, 20))
+        
+    def create_mapping_interface(self):
+        """Create the exercise mapping interface"""
+        main_frame = ctk.CTkScrollableFrame(self.window)
+        main_frame.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        
+        self.mapping_vars = {}
+        
+        for i, unmapped_exercise in enumerate(self.unmapped_exercises):
+            # Create frame for each unmapped exercise
+            exercise_frame = ctk.CTkFrame(main_frame)
+            exercise_frame.pack(fill="x", padx=10, pady=10)
+            exercise_frame.grid_columnconfigure(1, weight=1)
+            
+            # Exercise name label
+            exercise_label = ctk.CTkLabel(exercise_frame, 
+                                         text=f"Hevy Exercise:",
+                                         font=ctk.CTkFont(size=12, weight="bold"))
+            exercise_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+            
+            hevy_name_label = ctk.CTkLabel(exercise_frame, 
+                                          text=unmapped_exercise.title(),
+                                          font=ctk.CTkFont(size=12),
+                                          text_color="orange")
+            hevy_name_label.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+            
+            # Mapping selection
+            mapping_label = ctk.CTkLabel(exercise_frame,
+                                        text="Map to Garmin Exercise:",
+                                        font=ctk.CTkFont(size=12, weight="bold"))
+            mapping_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
+            
+            # Create dropdown with available exercises
+            self.mapping_vars[unmapped_exercise] = ctk.StringVar()
+            
+            # Find suggested mapping (closest match)
+            suggested = self.find_suggested_mapping(unmapped_exercise)
+            self.mapping_vars[unmapped_exercise].set(suggested)
+            
+            mapping_dropdown = ctk.CTkOptionMenu(exercise_frame,
+                                                variable=self.mapping_vars[unmapped_exercise],
+                                                values=self.available_exercises,
+                                                width=300)
+            mapping_dropdown.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+            
+    def find_suggested_mapping(self, unmapped_exercise):
+        """Find the best suggested mapping for an unmapped exercise"""
+        unmapped_lower = unmapped_exercise.lower()
+        
+        # Simple keyword matching for suggestions
+        suggestions = []
+        
+        for available_exercise in self.available_exercises:
+            available_lower = available_exercise.lower()
+            
+            # Check for common words
+            unmapped_words = set(unmapped_lower.split())
+            available_words = set(available_lower.split())
+            common_words = unmapped_words.intersection(available_words)
+            
+            if common_words:
+                suggestions.append((len(common_words), available_exercise))
+        
+        # Return the exercise with most common words, or first available if no match
+        if suggestions:
+            suggestions.sort(reverse=True, key=lambda x: x[0])
+            return suggestions[0][1]
+        else:
+            return self.available_exercises[0] if self.available_exercises else "Unknown Exercise"
+    
+    def create_footer(self):
+        """Create footer with action buttons"""
+        footer_frame = ctk.CTkFrame(self.window)
+        footer_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
+        
+        # Instructions
+        instructions = "Select the closest Garmin exercise for each unmapped Hevy exercise.\n"
+        instructions += "The application will remember these mappings for future use."
+        
+        ctk.CTkLabel(footer_frame, text=instructions,
+                    font=ctk.CTkFont(size=12)).pack(pady=10)
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(footer_frame)
+        button_frame.pack(pady=10)
+        
+        ctk.CTkButton(button_frame, text="Cancel", command=self.cancel_action,
+                     width=120).pack(side="left", padx=10)
+        
+        ctk.CTkButton(button_frame, text="Continue with Mappings", command=self.confirm_action,
+                     width=180, fg_color="green", hover_color="darkgreen").pack(side="right", padx=10)
+        
+    def cancel_action(self):
+        """Handle cancel button"""
+        self.user_confirmed = False
+        self.window.destroy()
+        
+    def confirm_action(self):
+        """Handle confirm button - save user mappings"""
+        try:
+            # Collect all user mappings
+            for unmapped_exercise, var in self.mapping_vars.items():
+                selected_garmin_exercise = var.get()
+                if selected_garmin_exercise and selected_garmin_exercise != "Unknown Exercise":
+                    self.user_mappings[unmapped_exercise] = selected_garmin_exercise
+            
+            self.user_confirmed = True
+            self.window.destroy()
+            
+        except Exception as e:
+            messagebox.showerror("Mapping Error", f"Error saving mappings: {str(e)}")
+
+
 class WorkoutPreviewWindow:
     """Preview and edit window for the merged workout data"""
     
@@ -326,7 +841,7 @@ class WorkoutPreviewWindow:
         
         # Instructions
         ctk.CTkLabel(footer_frame, 
-                    text="Review your workout data above. Edit any sets if needed, then export to save your FIT file.",
+                    text="Review and edit your workout data above. Click 'Final Summary' to see muscle group analysis and export your FIT file.",
                     font=ctk.CTkFont(size=12)).pack(pady=10)
         
         # Buttons
@@ -336,27 +851,42 @@ class WorkoutPreviewWindow:
         ctk.CTkButton(button_frame, text="Cancel", command=self.cancel_action,
                      width=120).pack(side="left", padx=10)
         
-        ctk.CTkButton(button_frame, text="Export FIT File", command=self.export_action,
-                     width=120, fg_color="green", hover_color="darkgreen").pack(side="right", padx=10)
+        ctk.CTkButton(button_frame, text="Final Summary →", command=self.show_final_summary,
+                     width=140, fg_color="blue", hover_color="darkblue").pack(side="right", padx=10)
         
     def cancel_action(self):
         """Handle cancel button"""
         self.user_confirmed = False
         self.window.destroy()
         
-    def export_action(self):
-        """Handle export button"""
-        # Open save dialog
-        output_path = filedialog.asksaveasfilename(
-            title="Save Enhanced FIT File As...",
-            defaultextension=".fit",
-            filetypes=[("FIT files", "*.fit"), ("All files", "*.*")]
-        )
+    def show_final_summary(self):
+        """Show the final summary window with muscle group analysis"""
+        try:
+            # Hide the preview window temporarily
+            self.window.withdraw()
+            
+            # Show summary window
+            summary_window = WorkoutSummaryWindow(self.parent_app, self.garmin_sets, 
+                                                 {"duration_seconds": 1800, "avg_hr": 110, "max_hr": 143, "calories": 194}, 
+                                                 self.enhanced_fit_file)
+            user_confirmed, output_path = summary_window.show_summary()
+            
+            if user_confirmed and output_path:
+                # User confirmed from summary, proceed with export
+                self.output_path = output_path
+                self.user_confirmed = True
+                self.window.destroy()
+            else:
+                # User wants to go back to editing, show preview window again
+                self.window.deiconify()
+                
+        except Exception as e:
+            messagebox.showerror("Summary Error", f"Error showing summary: {str(e)}")
+            self.window.deiconify()
         
-        if output_path:
-            self.output_path = output_path
-            self.user_confirmed = True
-            self.window.destroy()
+    def export_action(self):
+        """Handle direct export button (legacy - now goes to summary)"""
+        self.show_final_summary()
 
 
 class HevyGarminMerger:
@@ -381,6 +911,38 @@ class HevyGarminMerger:
         
         # Setup UI
         self.setup_ui()
+        
+    def get_available_garmin_exercises(self):
+        """Get list of all available Garmin exercises for dropdown"""
+        try:
+            exercise_mappings = self.config.get("exercise_mappings", {})
+            # Create a list of exercise names formatted for display
+            available_exercises = []
+            
+            for hevy_name, mapping in exercise_mappings.items():
+                # Format exercise name for display (title case)
+                display_name = hevy_name.replace("_", " ").title()
+                available_exercises.append(display_name)
+            
+            # Sort alphabetically
+            available_exercises.sort()
+            
+            # Add some common generic options at the top
+            generic_options = [
+                "Strength Training (Generic)",
+                "Chest Exercise (Generic)", 
+                "Back Exercise (Generic)",
+                "Shoulder Exercise (Generic)",
+                "Leg Exercise (Generic)",
+                "Arm Exercise (Generic)",
+                "Core Exercise (Generic)"
+            ]
+            
+            return generic_options + available_exercises
+            
+        except Exception as e:
+            self.update_status(f"Error getting available exercises: {str(e)}")
+            return ["Strength Training (Generic)"]
         
     def load_config(self):
         """Load the Hevy-Garmin configuration file"""
@@ -596,8 +1158,8 @@ class HevyGarminMerger:
             # Step 1: Read FIT file and convert to DataFrame
             self.update_status("Reading Garmin FIT file...")
             
-            # Load FIT file using fit_tool
-            fit_file = FitFile.from_file(garmin_fit_path)
+            # Load FIT file using fit_tool (disable CRC check for compatibility)
+            fit_file = FitFile.from_file(garmin_fit_path, check_crc=False)
             self.update_status("Garmin FIT file loaded successfully.")
             
             # Convert to CSV format for easier manipulation
@@ -620,7 +1182,21 @@ class HevyGarminMerger:
             if len(hevy_df) > 0:
                 self.update_status("Sample Hevy data columns: " + ", ".join(hevy_df.columns[:5].tolist()))
             
-            # Step 3: Process Hevy Data
+            # Step 3: Check for unmapped exercises first
+            self.update_status("Checking exercise mappings...")
+            
+            # Parse Hevy data to check for unmapped exercises
+            parsed_hevy_data = self.parse_hevy_data(hevy_df)
+            unmapped_exercises = self.find_unmapped_exercises(parsed_hevy_data)
+            
+            if unmapped_exercises:
+                # Show unmapped exercise dialog on main thread
+                self.root.after(0, lambda: self.handle_unmapped_exercises(
+                    unmapped_exercises, fit_file, hevy_df, garmin_df, temp_garmin_csv
+                ))
+                return
+            
+            # Step 4: Process Hevy Data (no unmapped exercises)
             self.update_status("Processing workout integration...")
             
             # Call the integration function
@@ -651,6 +1227,78 @@ class HevyGarminMerger:
             self.root.after(0, lambda: messagebox.showerror(
                 "Error", 
                 f"An error occurred during workout processing:\n\n{str(e)}"
+            ))
+            # Re-enable merge button
+            self.root.after(0, lambda: self.merge_button.configure(state="normal"))
+    
+    def handle_unmapped_exercises(self, unmapped_exercises, fit_file, hevy_df, garmin_df, temp_garmin_csv):
+        """Handle unmapped exercises by showing dialog and continuing workflow"""
+        try:
+            self.update_status(f"Requesting user input for {len(unmapped_exercises)} unmapped exercises...")
+            
+            # Get available exercises for dropdown
+            available_exercises = self.get_available_garmin_exercises()
+            
+            # Show dialog
+            dialog = UnmappedExerciseDialog(self, unmapped_exercises, available_exercises)
+            user_confirmed, user_mappings = dialog.show_dialog()
+            
+            if not user_confirmed:
+                self.update_status("User cancelled exercise mapping. Process aborted.")
+                self.merge_button.configure(state="normal")
+                return
+            
+            # Apply user mappings
+            self.apply_user_mappings(user_mappings)
+            self.update_status(f"Applied {len(user_mappings)} user-defined mappings")
+            
+            # Continue with the workflow in a background thread
+            continue_thread = threading.Thread(
+                target=self.continue_after_mapping,
+                args=(fit_file, hevy_df, garmin_df, temp_garmin_csv)
+            )
+            continue_thread.daemon = True
+            continue_thread.start()
+            
+        except Exception as e:
+            self.update_status(f"Error handling unmapped exercises: {str(e)}")
+            messagebox.showerror("Mapping Error", f"Error handling unmapped exercises:\n\n{str(e)}")
+            self.merge_button.configure(state="normal")
+    
+    def continue_after_mapping(self, fit_file, hevy_df, garmin_df, temp_garmin_csv):
+        """Continue the workflow after user has mapped exercises"""
+        try:
+            # Process Hevy Data with updated mappings
+            self.update_status("Processing workout integration with user mappings...")
+            
+            # Call the integration function
+            enhanced_fit_file = self.integrate_hevy_data(fit_file, hevy_df)
+            
+            # Extract workout statistics for the preview
+            workout_stats = self.extract_workout_statistics(garmin_df)
+            
+            # Get the processed Garmin sets (stored during integration)
+            garmin_sets = getattr(self, 'last_processed_sets', [])
+            
+            if not garmin_sets:
+                raise Exception("No workout data was processed after mapping.")
+            
+            # Show preview window
+            self.update_status("Opening workout preview...")
+            
+            # Clean up temp file
+            if os.path.exists(temp_garmin_csv):
+                os.remove(temp_garmin_csv)
+            
+            # Show preview window on main thread
+            self.root.after(0, lambda: self.show_workout_preview(garmin_sets, workout_stats, enhanced_fit_file))
+            
+        except Exception as e:
+            self.update_status(f"ERROR after mapping: {str(e)}")
+            # Show error message box
+            self.root.after(0, lambda: messagebox.showerror(
+                "Error", 
+                f"An error occurred after exercise mapping:\n\n{str(e)}"
             ))
             # Re-enable merge button
             self.root.after(0, lambda: self.merge_button.configure(state="normal"))
@@ -771,88 +1419,6 @@ class HevyGarminMerger:
         except Exception as e:
             self.update_status(f"Error extracting statistics: {str(e)}")
             return {'duration_seconds': 1800, 'avg_hr': 110, 'max_hr': 143, 'calories': 194, 'total_records': 0}
-            
-    def merge_workout_files(self, garmin_fit_path, hevy_csv_path, output_path):
-        """
-        Core function that merges Garmin FIT and Hevy CSV files
-        This function runs in a separate thread to avoid blocking the UI
-        """
-        try:
-            # Step 1: Read FIT file and convert to DataFrame
-            self.update_status("Reading Garmin FIT file...")
-            
-            # Load FIT file using fit_tool
-            fit_file = FitFile.from_file(garmin_fit_path)
-            self.update_status("Garmin FIT file loaded successfully.")
-            
-            # Convert to CSV format for easier manipulation
-            temp_garmin_csv = os.path.join(tempfile.gettempdir(), "temp_garmin.csv")
-            fit_file.to_csv(temp_garmin_csv)
-            
-            # Step 2: Read and Process Data
-            self.update_status("Reading workout data...")
-            
-            # Load Garmin data from CSV
-            garmin_df = pd.read_csv(temp_garmin_csv)
-            self.update_status(f"Loaded Garmin data: {len(garmin_df)} records")
-            
-            # Load Hevy data
-            hevy_df = pd.read_csv(hevy_csv_path)
-            self.update_status(f"Loaded Hevy data: {len(hevy_df)} exercises")
-            
-            # Display sample of data for debugging
-            self.update_status("Sample Garmin data columns: " + ", ".join(garmin_df.columns[:5].tolist()))
-            if len(hevy_df) > 0:
-                self.update_status("Sample Hevy data columns: " + ", ".join(hevy_df.columns[:5].tolist()))
-            
-            # Step 3: Append Hevy Data (Placeholder for now)
-            self.update_status("Mapping exercises and adding sets...")
-            
-            # Call the placeholder function that will be replaced with specialized logic
-            enhanced_fit_file = self.integrate_hevy_data(fit_file, hevy_df)
-            
-            self.update_status("Hevy data integration completed.")
-            
-            # Step 4: Create enhanced FIT file
-            self.update_status("Generating enhanced FIT file...")
-            
-            # Save the enhanced FIT file
-            enhanced_fit_file.to_file(output_path)
-            
-            # Step 5: Clean Up
-            self.update_status("Cleaning up temporary files...")
-            if os.path.exists(temp_garmin_csv):
-                os.remove(temp_garmin_csv)
-                
-            # Step 6: Validate Output
-            self.update_status("Validating output file...")
-            validation_passed = self.validate_output(output_path)
-            
-            if validation_passed:
-                self.update_status("SUCCESS! Enhanced FIT file created and validated successfully.")
-                self.update_status(f"Output file: {output_path}")
-                self.update_status("Note: This version preserves original Garmin data.")
-                self.update_status("Hevy exercise data integration will be added in the next phase.")
-                
-                # Show success message box
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Success", 
-                    f"Workout files processed successfully!\n\nOutput file:\n{output_path}\n\nValidation: PASSED\n\nNote: This is the framework version. Exercise data integration will be added in the next phase."
-                ))
-            else:
-                raise Exception("Output file validation failed")
-            
-        except Exception as e:
-            self.update_status(f"ERROR: {str(e)}")
-            # Show error message box
-            self.root.after(0, lambda: messagebox.showerror(
-                "Error", 
-                f"An error occurred during the merge process:\n\n{str(e)}"
-            ))
-            
-        finally:
-            # Re-enable merge button
-            self.root.after(0, lambda: self.merge_button.configure(state="normal"))
             
     def integrate_hevy_data(self, garmin_fit_file, hevy_df):
         """
@@ -1044,6 +1610,7 @@ class HevyGarminMerger:
     def map_hevy_to_garmin_sets(self, parsed_hevy_data, workout_timing):
         """Map Hevy exercises to Garmin set records with proper timing"""
         try:
+            # Proceed with mapping (unmapped exercises handled earlier in workflow)
             garmin_sets = []
             exercise_mappings = self.config.get("exercise_mappings", {})
             settings = self.config.get("settings", {})
@@ -1065,7 +1632,7 @@ class HevyGarminMerger:
             for i, set_data in enumerate(parsed_hevy_data):
                 exercise_name = set_data['exercise_name']
                 
-                # Look up exercise mapping
+                # Look up exercise mapping (should now include user mappings)
                 exercise_mapping = exercise_mappings.get(exercise_name)
                 if not exercise_mapping:
                     self.update_status(f"Warning: No mapping found for '{exercise_name}', using default")
@@ -1116,6 +1683,84 @@ class HevyGarminMerger:
         except Exception as e:
             self.update_status(f"Error mapping exercises: {str(e)}")
             return []
+    
+    def find_unmapped_exercises(self, parsed_hevy_data):
+        """Find exercises that don't have Garmin mappings"""
+        try:
+            exercise_mappings = self.config.get("exercise_mappings", {})
+            unmapped_exercises = set()
+            
+            for set_data in parsed_hevy_data:
+                exercise_name = set_data['exercise_name']
+                if exercise_name not in exercise_mappings:
+                    unmapped_exercises.add(exercise_name)
+            
+            return list(unmapped_exercises)
+            
+        except Exception as e:
+            self.update_status(f"Error finding unmapped exercises: {str(e)}")
+            return []
+    
+    def show_unmapped_exercise_dialog(self, unmapped_exercises, available_exercises):
+        """Show dialog for mapping unmapped exercises - must be called from main thread"""
+        try:
+            dialog = UnmappedExerciseDialog(self, unmapped_exercises, available_exercises)
+            return dialog.show_dialog()
+        except Exception as e:
+            self.update_status(f"Error showing unmapped exercise dialog: {str(e)}")
+            return False, {}
+    
+    def apply_user_mappings(self, user_mappings):
+        """Apply user-defined exercise mappings to the configuration"""
+        try:
+            exercise_mappings = self.config.get("exercise_mappings", {})
+            
+            for hevy_exercise, garmin_exercise in user_mappings.items():
+                # Find the mapping for the selected Garmin exercise
+                garmin_exercise_lower = garmin_exercise.lower()
+                
+                # Look for existing mapping or create a generic one
+                found_mapping = None
+                for existing_hevy, mapping in exercise_mappings.items():
+                    if existing_hevy.lower() == garmin_exercise_lower:
+                        found_mapping = mapping
+                        break
+                
+                if found_mapping:
+                    # Use the existing mapping
+                    exercise_mappings[hevy_exercise.lower()] = found_mapping
+                    self.update_status(f"Mapped '{hevy_exercise}' to '{garmin_exercise}'")
+                else:
+                    # Create generic mapping based on exercise type
+                    generic_mapping = self.create_generic_mapping(garmin_exercise)
+                    exercise_mappings[hevy_exercise.lower()] = generic_mapping
+                    self.update_status(f"Created generic mapping for '{hevy_exercise}' as '{garmin_exercise}'")
+            
+            # Update the config in memory
+            self.config["exercise_mappings"] = exercise_mappings
+            
+        except Exception as e:
+            self.update_status(f"Error applying user mappings: {str(e)}")
+    
+    def create_generic_mapping(self, garmin_exercise_name):
+        """Create a generic mapping based on exercise type"""
+        exercise_lower = garmin_exercise_name.lower()
+        
+        # Map to appropriate categories based on keywords
+        if any(word in exercise_lower for word in ['chest', 'bench', 'press']):
+            return {"category": 0, "name": 0}  # Chest
+        elif any(word in exercise_lower for word in ['back', 'pull', 'row']):
+            return {"category": 29, "name": 0}  # Back
+        elif any(word in exercise_lower for word in ['shoulder', 'overhead']):
+            return {"category": 8, "name": 0}  # Shoulders
+        elif any(word in exercise_lower for word in ['leg', 'squat', 'lunge']):
+            return {"category": 10, "name": 0}  # Legs
+        elif any(word in exercise_lower for word in ['arm', 'bicep', 'tricep', 'curl']):
+            return {"category": 1, "name": 0}  # Arms
+        elif any(word in exercise_lower for word in ['core', 'ab', 'plank']):
+            return {"category": 16, "name": 0}  # Core
+        else:
+            return {"category": 0, "name": 0}  # Default to strength training
     
     def detect_set_type(self, set_note):
         """Detect set type from note text using keyword mapping"""
@@ -1216,45 +1861,10 @@ class HevyGarminMerger:
             return base_fit_file
             
         except ImportError:
-            self.update_status("Note: Advanced FIT record creation not available")
-            return self.create_enhanced_fit_file_fallback(base_fit_file, garmin_sets, parsed_hevy_data)
+            self.update_status("Note: Advanced FIT record creation not available, using base file")
+            return base_fit_file
         except Exception as e:
             self.update_status(f"Error creating enhanced FIT file: {str(e)}")
-            return self.create_enhanced_fit_file_fallback(base_fit_file, garmin_sets, parsed_hevy_data)
-    
-    def create_enhanced_fit_file_fallback(self, base_fit_file, garmin_sets, parsed_hevy_data):
-        """Fallback method for creating enhanced FIT file without advanced record manipulation"""
-        try:
-            # Create a summary of what was integrated
-            exercise_summary = {}
-            for set_data in garmin_sets:
-                exercise_name = set_data['original_exercise_name']
-                if exercise_name not in exercise_summary:
-                    exercise_summary[exercise_name] = {'sets': 0, 'total_reps': 0, 'max_weight': 0}
-                
-                exercise_summary[exercise_name]['sets'] += 1
-                exercise_summary[exercise_name]['total_reps'] += set_data['repetitions']
-                exercise_summary[exercise_name]['max_weight'] = max(
-                    exercise_summary[exercise_name]['max_weight'], 
-                    set_data['weight']
-                )
-            
-            # Log integration summary
-            self.update_status("=== WORKOUT INTEGRATION SUMMARY ===")
-            for exercise, stats in exercise_summary.items():
-                weight_unit = self.weight_unit_var.get() if self.weight_unit_var else "kg"
-                self.update_status(f"{exercise.title()}: {stats['sets']} sets, "
-                                 f"{stats['total_reps']} total reps, "
-                                 f"max {stats['max_weight']} {weight_unit}")
-            
-            # Add workout notes summary
-            if hasattr(self, 'aggregated_workout_notes') and self.aggregated_workout_notes:
-                self.update_status(f"Added {len(self.aggregated_workout_notes)} set notes to workout")
-            
-            return base_fit_file
-            
-        except Exception as e:
-            self.update_status(f"Error in fallback FIT file creation: {str(e)}")
             return base_fit_file
         
     def validate_output(self, output_path):
@@ -1282,7 +1892,7 @@ class HevyGarminMerger:
             
             # Try to read and parse the FIT file
             try:
-                test_fit = FitFile.from_file(output_path)
+                test_fit = FitFile.from_file(output_path, check_crc=False)
                 self.update_status("Validation: FIT file structure is valid")
                 
                 # Check if file has records

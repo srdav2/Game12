@@ -1,0 +1,86 @@
+{
+  "muscle_group_mappings": {
+    "chest": {
+      "exercises": ["bench press", "chest press", "flye", "pushup", "dips"],
+      "color": "#FF6B6B",
+      "front_regions": ["chest_upper", "chest_lower"],
+      "back_regions": []
+    },
+    "back": {
+      "exercises": ["deadlift", "row", "pulldown", "pull up", "shrug"],
+      "color": "#4ECDC4", 
+      "front_regions": [],
+      "back_regions": ["upper_back", "lower_back", "lats"]
+    },
+    "shoulders": {
+      "exercises": ["shoulder press", "lateral raise", "front raise", "overhead press", "upright row"],
+      "color": "#45B7D1",
+      "front_regions": ["shoulders_front"],
+      "back_regions": ["shoulders_back"]
+    },
+    "biceps": {
+      "exercises": ["bicep curl", "curl", "chin up"],
+      "color": "#96CEB4",
+      "front_regions": ["biceps"],
+      "back_regions": []
+    },
+    "triceps": {
+      "exercises": ["triceps", "pushdown", "extension", "close grip"],
+      "color": "#FFEAA7",
+      "front_regions": [],
+      "back_regions": ["triceps"]
+    },
+    "quadriceps": {
+      "exercises": ["squat", "leg press", "leg extension", "lunge"],
+      "color": "#DDA0DD",
+      "front_regions": ["quads"],
+      "back_regions": []
+    },
+    "hamstrings": {
+      "exercises": ["deadlift", "leg curl", "romanian deadlift"],
+      "color": "#F7DC6F",
+      "front_regions": [],
+      "back_regions": ["hamstrings"]
+    },
+    "glutes": {
+      "exercises": ["squat", "deadlift", "lunge", "hip thrust", "glute bridge"],
+      "color": "#BB8FCE",
+      "front_regions": [],
+      "back_regions": ["glutes"]
+    },
+    "calves": {
+      "exercises": ["calf raise", "calf press"],
+      "color": "#85C1E9",
+      "front_regions": ["calves_front"],
+      "back_regions": ["calves_back"]
+    },
+    "core": {
+      "exercises": ["crunch", "plank", "sit up", "leg raise", "ab"],
+      "color": "#F8C471",
+      "front_regions": ["abs"],
+      "back_regions": ["lower_back"]
+    }
+  },
+  
+  "body_regions": {
+    "front": {
+      "chest_upper": {"x": 50, "y": 25, "width": 30, "height": 15},
+      "chest_lower": {"x": 50, "y": 40, "width": 30, "height": 10},
+      "shoulders_front": {"x": 35, "y": 20, "width": 15, "height": 10},
+      "biceps": {"x": 25, "y": 35, "width": 10, "height": 20},
+      "abs": {"x": 50, "y": 50, "width": 20, "height": 25},
+      "quads": {"x": 45, "y": 75, "width": 25, "height": 30},
+      "calves_front": {"x": 50, "y": 105, "width": 15, "height": 20}
+    },
+    "back": {
+      "shoulders_back": {"x": 35, "y": 20, "width": 15, "height": 10},
+      "upper_back": {"x": 40, "y": 25, "width": 35, "height": 20},
+      "lats": {"x": 30, "y": 35, "width": 20, "height": 25},
+      "lower_back": {"x": 45, "y": 50, "width": 25, "height": 15},
+      "triceps": {"x": 75, "y": 35, "width": 10, "height": 20},
+      "glutes": {"x": 45, "y": 65, "width": 25, "height": 15},
+      "hamstrings": {"x": 45, "y": 80, "width": 25, "height": 20},
+      "calves_back": {"x": 50, "y": 105, "width": 15, "height": 20}
+    }
+  }
+}
