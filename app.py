@@ -158,7 +158,7 @@ class WorkoutSummaryWindow:
         total_sets = len(self.garmin_sets)
         total_reps = sum(s['repetitions'] for s in self.garmin_sets)
         total_weight = sum(s['weight'] * s['repetitions'] for s in self.garmin_sets)
-        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        weight_unit = getattr(self.parent_app, 'weight_unit', 'kg')
         
         ctk.CTkLabel(hevy_frame, text=f"Total Sets: {total_sets}").pack(anchor="w", padx=20)
         ctk.CTkLabel(hevy_frame, text=f"Total Reps: {total_reps}").pack(anchor="w", padx=20)
@@ -183,7 +183,7 @@ class WorkoutSummaryWindow:
                 muscle_group_frame.pack(fill="x", pady=5)
                 
                 # Muscle group name and volume
-                weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+                weight_unit = getattr(self.parent_app, 'weight_unit', 'kg')
                 volume_text = f"{muscle_group.title()}: {volume_data['total_volume']:.0f} {weight_unit}"
                 sets_text = f"({volume_data['sets']} sets, {volume_data['reps']} reps)"
                 
@@ -288,7 +288,7 @@ class WorkoutSummaryWindow:
             exercise_summary[exercise_name]['set_types'].add(set_type_names.get(set_data['set_type'], "Normal"))
         
         # Display exercise summary
-        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        weight_unit = getattr(self.parent_app, 'weight_unit', 'kg')
         
         for exercise, stats in exercise_summary.items():
             exercise_frame_item = ctk.CTkFrame(exercise_frame)
@@ -742,7 +742,7 @@ class WorkoutPreviewWindow:
             self.tree.delete(item)
         
         # Add exercise data
-        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        weight_unit = getattr(self.parent_app, 'weight_unit', 'kg')
         set_type_names = {0: "Normal", 2: "Warm-up", 5: "Failure", 6: "Drop set"}
         
         for i, set_data in enumerate(self.garmin_sets):
@@ -798,7 +798,7 @@ class WorkoutPreviewWindow:
         # Weight
         weight_frame = ctk.CTkFrame(dialog)
         weight_frame.pack(fill="x", padx=20, pady=10)
-        weight_unit = self.parent_app.weight_unit_var.get() if self.parent_app.weight_unit_var else "kg"
+        weight_unit = getattr(self.parent_app, 'weight_unit', 'kg')
         ctk.CTkLabel(weight_frame, text=f"Weight ({weight_unit}):").pack(side="left", padx=10)
         weight_entry = ctk.CTkEntry(weight_frame, width=100)
         weight_entry.pack(side="right", padx=10)
@@ -904,7 +904,13 @@ class HevyGarminMerger:
         self.hevy_path_display = None
         self.merge_button = None
         self.status_log = None
-        self.weight_unit_var = None
+        # Fixed weight unit handling – we always operate in kilograms
+        self.weight_unit = "kg"
+        # Remember last-used directories for friendlier file pickers
+        self.last_garmin_dir = os.path.expanduser("~")
+        self.last_hevy_dir = os.path.expanduser("~")
+        # Progress bar reference (created in setup_right_column)
+        self.progress_bar = None
         
         # Load configuration
         self.config = self.load_config()
@@ -1030,33 +1036,14 @@ class HevyGarminMerger:
                                              state="readonly")
         self.hevy_path_display.grid(row=6, column=0, padx=20, pady=(0, 30), sticky="ew")
         
-        # Step 3: Weight Unit Selection
-        step3_label = ctk.CTkLabel(parent, text="Step 3: Select Weight Unit", 
-                                  font=ctk.CTkFont(size=14, weight="bold"))
-        step3_label.grid(row=7, column=0, padx=20, pady=(0, 10), sticky="w")
-        
-        # Weight unit selection
-        self.weight_unit_var = ctk.StringVar(value=self.config["settings"].get("weight_unit", "kg"))
-        weight_unit_frame = ctk.CTkFrame(parent)
-        weight_unit_frame.grid(row=8, column=0, padx=20, pady=(0, 30), sticky="ew")
-        weight_unit_frame.grid_columnconfigure(0, weight=1)
-        weight_unit_frame.grid_columnconfigure(1, weight=1)
-        
-        kg_radio = ctk.CTkRadioButton(weight_unit_frame, text="Kilograms (kg)", 
-                                     variable=self.weight_unit_var, value="kg")
-        kg_radio.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        
-        lbs_radio = ctk.CTkRadioButton(weight_unit_frame, text="Pounds (lbs)", 
-                                      variable=self.weight_unit_var, value="lbs")
-        lbs_radio.grid(row=0, column=1, padx=10, pady=10, sticky="w")
-        
         # Merge Button (initially disabled)
         self.merge_button = ctk.CTkButton(parent, text="Process & Preview Workout", 
                                          command=self.start_merge_process,
                                          state="disabled",
                                          font=ctk.CTkFont(size=16, weight="bold"),
                                          height=50)
-        self.merge_button.grid(row=9, column=0, padx=20, pady=(20, 20), sticky="ew")
+        # Place the merge button directly after file selection
+        self.merge_button.grid(row=7, column=0, padx=20, pady=(20, 20), sticky="ew")
         
     def setup_right_column(self, parent):
         """Setup the right column with status and results"""
@@ -1073,6 +1060,14 @@ class HevyGarminMerger:
         self.status_log = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Monaco", size=12))
         self.status_log.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         
+        # Progress bar (indeterminate)
+        try:
+            self.progress_bar = ctk.CTkProgressBar(parent, mode="indeterminate")
+            self.progress_bar.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+            self.progress_bar.stop()
+        except Exception:
+            self.progress_bar = None
+
         # Add initial status message
         self.update_status("Ready. Please select your Garmin .FIT file and Hevy .CSV file to begin.")
         
@@ -1087,11 +1082,13 @@ class HevyGarminMerger:
         """Handle Garmin file selection"""
         file_path = filedialog.askopenfilename(
             title="Select Garmin FIT File",
-            filetypes=[("FIT files", "*.fit"), ("All files", "*.*")]
+            filetypes=[("FIT files", "*.fit"), ("All files", "*.*")],
+            initialdir=self.last_garmin_dir
         )
         
         if file_path:
             self.garmin_file_path = file_path
+            self.last_garmin_dir = os.path.dirname(file_path)
             # Display shortened path in the entry field
             display_path = self.shorten_path(file_path)
             self.garmin_path_display.configure(state="normal")
@@ -1106,11 +1103,13 @@ class HevyGarminMerger:
         """Handle Hevy file selection"""
         file_path = filedialog.askopenfilename(
             title="Select Hevy CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialdir=self.last_hevy_dir
         )
         
         if file_path:
             self.hevy_file_path = file_path
+            self.last_hevy_dir = os.path.dirname(file_path)
             # Display shortened path in the entry field
             display_path = self.shorten_path(file_path)
             self.hevy_path_display.configure(state="normal")
@@ -1143,6 +1142,14 @@ class HevyGarminMerger:
         """Start the merge process and show preview window"""
         # Disable merge button to prevent multiple clicks
         self.merge_button.configure(state="disabled")
+        # Also disable file selection buttons and start the progress bar
+        try:
+            self.garmin_button.configure(state="disabled")
+            self.hevy_button.configure(state="disabled")
+            if self.progress_bar:
+                self.progress_bar.start()
+        except Exception:
+            pass
         
         # Run merge in separate thread to prevent UI freezing
         merge_thread = threading.Thread(
@@ -1301,7 +1308,16 @@ class HevyGarminMerger:
                 f"An error occurred after exercise mapping:\n\n{str(e)}"
             ))
             # Re-enable merge button
-            self.root.after(0, lambda: self.merge_button.configure(state="normal"))
+            def reenable():
+                self.merge_button.configure(state="normal")
+                try:
+                    self.garmin_button.configure(state="normal")
+                    self.hevy_button.configure(state="normal")
+                    if self.progress_bar:
+                        self.progress_bar.stop()
+                except Exception:
+                    pass
+            self.root.after(0, reenable)
     
     def show_workout_preview(self, garmin_sets, workout_stats, enhanced_fit_file):
         """Show the workout preview window"""
@@ -1321,6 +1337,13 @@ class HevyGarminMerger:
         finally:
             # Re-enable merge button
             self.merge_button.configure(state="normal")
+            try:
+                self.garmin_button.configure(state="normal")
+                self.hevy_button.configure(state="normal")
+                if self.progress_bar:
+                    self.progress_bar.stop()
+            except Exception:
+                pass
     
     def finalize_workout_export(self, edited_garmin_sets, enhanced_fit_file, output_path):
         """Finalize the workout export with any user edits"""
@@ -1346,6 +1369,12 @@ class HevyGarminMerger:
                     "Export Complete", 
                     f"Workout file exported successfully!\n\nOutput file:\n{output_path}\n\nYou can now upload this file to Garmin Connect."
                 )
+                # Reveal in Finder (macOS)
+                try:
+                    import subprocess
+                    subprocess.run(["open", "-R", output_path], check=False)
+                except Exception:
+                    pass
             else:
                 raise Exception("Output file validation failed")
                 
@@ -1376,7 +1405,7 @@ class HevyGarminMerger:
                 )
             
             for exercise, stats in exercise_summary.items():
-                weight_unit = self.weight_unit_var.get() if self.weight_unit_var else "kg"
+                weight_unit = getattr(self, 'weight_unit', 'kg')
                 self.update_status(f"{exercise.title()}: {stats['sets']} sets, "
                                  f"{stats['total_reps']} total reps, "
                                  f"max {stats['max_weight']} {weight_unit}")
@@ -1479,6 +1508,19 @@ class HevyGarminMerger:
         try:
             col_mapping = self.config["hevy_csv_columns"]
             parsed_data = []
+            # Optional auto-detect: if workout title hints pounds, convert to kg
+            # We inspect the workout title column if present and set a flag
+            detected_pounds = False
+            title_col = col_mapping.get("workout_title")
+            if title_col and title_col in hevy_df.columns:
+                try:
+                    title_sample = " ".join(str(t) for t in hevy_df[title_col].dropna().astype(str).head(10))
+                    title_lower = title_sample.lower()
+                    if "lbs" in title_lower or "pound" in title_lower:
+                        detected_pounds = True
+                        self.update_status("Detected 'lbs' in Hevy workout title; converting weights to kg.")
+                except Exception:
+                    pass
             
             for idx, row in hevy_df.iterrows():
                 try:
@@ -1495,6 +1537,10 @@ class HevyGarminMerger:
                         'set_note': str(row.get(col_mapping.get("set_note", "Notes"), "")).strip(),
                         'original_row_index': idx
                     }
+
+                    # If detected pounds, convert to kilograms
+                    if detected_pounds and set_data['weight']:
+                        set_data['weight'] = round(set_data['weight'] * 0.45359237, 3)
                     
                     # Handle optional columns
                     if "workout_note" in col_mapping:
@@ -1615,9 +1661,9 @@ class HevyGarminMerger:
             exercise_mappings = self.config.get("exercise_mappings", {})
             settings = self.config.get("settings", {})
             
-            # Get user's weight unit choice
-            selected_weight_unit = self.weight_unit_var.get() if self.weight_unit_var else "kg"
-            weight_unit_id = self.config.get("garmin_weight_unit_mapping", {}).get(selected_weight_unit, 0)
+            # Always operate in kilograms for output
+            selected_weight_unit = "kg"
+            weight_unit_id = 0
             
             # Calculate time distribution across sets
             total_sets = len(parsed_hevy_data)
@@ -1738,6 +1784,18 @@ class HevyGarminMerger:
             
             # Update the config in memory
             self.config["exercise_mappings"] = exercise_mappings
+            # Persist to disk with a timestamped backup for safety
+            try:
+                config_path = os.path.join(os.path.dirname(__file__), "hevy_garmin_config.json")
+                backup_path = os.path.join(os.path.dirname(__file__), f"hevy_garmin_config.backup.json")
+                if os.path.exists(config_path):
+                    import shutil
+                    shutil.copyfile(config_path, backup_path)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, indent=2)
+                self.update_status("Saved updated exercise mappings to configuration.")
+            except Exception as save_err:
+                self.update_status(f"Warning: Could not save mappings to file: {save_err}")
             
         except Exception as e:
             self.update_status(f"Error applying user mappings: {str(e)}")
@@ -1807,7 +1865,7 @@ class HevyGarminMerger:
                     # Full FIT record creation requires more complex message definition
                     self.update_status(f"Would add set: {set_data['original_exercise_name']} - "
                                      f"{set_data['repetitions']} reps @ {set_data['weight']} "
-                                     f"{self.weight_unit_var.get() if self.weight_unit_var else 'kg'}")
+                                     f"{getattr(self, 'weight_unit', 'kg')}")
                     added_sets += 1
                     
                 except Exception as e:
@@ -1831,7 +1889,7 @@ class HevyGarminMerger:
             # Log integration summary
             self.update_status("=== WORKOUT INTEGRATION SUMMARY ===")
             for exercise, stats in exercise_summary.items():
-                weight_unit = self.weight_unit_var.get() if self.weight_unit_var else "kg"
+                weight_unit = getattr(self, 'weight_unit', 'kg')
                 self.update_status(f"{exercise.title()}: {stats['sets']} sets, "
                                  f"{stats['total_reps']} total reps, "
                                  f"max {stats['max_weight']} {weight_unit}")
